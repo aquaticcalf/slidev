@@ -2,7 +2,6 @@
   "name": "slidev",
   "type": "module",
   "version": "52.11.0",
-  "private": true,
   "bin": {
     "slidev": "./packages/slidev/bin/slidev.mjs"
   },
