@@ -5,6 +5,13 @@
   "bin": {
     "slidev": "./packages/slidev/bin/slidev.mjs"
   },
+  "dependencies": {
+    "@slidev/cli": "workspace:*",
+    "@slidev/client": "0.52.11",
+    "@slidev/parser": "0.52.11",
+    "@slidev/types": "0.52.11",
+    "tsx": "^4.21.0"
+  },
   "packageManager": "bun@1.2.4",
   "engines": {
     "node": ">=18.0.0"
