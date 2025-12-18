@@ -1,6 +1,3 @@
-import type { ResolvedSlidevOptions, SlidevConfig, SlidevData } from '@slidev/types'
-import type { LogLevel, ViteDevServer } from 'vite'
-import type { Argv } from 'yargs'
 import { exec } from 'node:child_process'
 import fs from 'node:fs/promises'
 import os from 'node:os'
@@ -8,17 +5,40 @@ import path from 'node:path'
 import process from 'node:process'
 import * as readline from 'node:readline'
 import { verifyConfig } from '@slidev/parser'
-import { blue, bold, cyan, cyanBright, dim, gray, green, underline, yellow } from 'ansis'
+import type {
+  ResolvedSlidevOptions,
+  SlidevConfig,
+  SlidevData,
+} from '@slidev/types'
+import {
+  blue,
+  bold,
+  cyan,
+  cyanBright,
+  dim,
+  gray,
+  green,
+  underline,
+  yellow,
+} from 'ansis'
 import equal from 'fast-deep-equal'
 import { getPort } from 'get-port-please'
 import openBrowser from 'open'
+import type { LogLevel, ViteDevServer } from 'vite'
+import type { Argv } from 'yargs'
 import yargs from 'yargs'
 import { version } from '../package.json'
 import { createServer } from './commands/serve'
 import { getThemeMeta, resolveTheme } from './integrations/themes'
 import { resolveOptions } from './options'
 import { parser } from './parser'
-import { getRoots, isInstalledGlobally, resolveEntry } from './resolver'
+import {
+  getRoots,
+  isInstalledGlobally,
+  isRemote,
+  loadSource,
+  resolveEntry,
+} from './resolver'
 import setupPreparser from './setups/preparser'
 import { updateFrontmatterPatch } from './utils'
 
@@ -59,57 +79,72 @@ const cli = yargs(process.argv.slice(2))
 cli.command(
   '* [entry]',
   'Start a local server for Slidev',
-  args => commonOptions(args)
-    .option('port', {
-      alias: 'p',
-      type: 'number',
-      describe: 'port',
-    })
-    .option('open', {
-      alias: 'o',
-      default: false,
-      type: 'boolean',
-      describe: 'open in browser',
-    })
-    .option('remote', {
-      type: 'string',
-      describe: 'listen public host and enable remote control',
-    })
-    .option('tunnel', {
-      default: false,
-      type: 'boolean',
-      describe: 'open a Cloudflare Quick Tunnel to make Slidev available on the internet',
-    })
-    .option('log', {
-      default: 'warn',
-      type: 'string',
-      choices: ['error', 'warn', 'info', 'silent'],
-      describe: 'log level',
-    })
-    .option('inspect', {
-      default: false,
-      type: 'boolean',
-      describe: 'enable the inspect plugin for debugging',
-    })
-    .option('force', {
-      alias: 'f',
-      default: false,
-      type: 'boolean',
-      describe: 'force the optimizer to ignore the cache and re-bundle',
-    })
-    .option('bind', {
-      type: 'string',
-      default: '0.0.0.0',
-      describe: 'specify which IP addresses the server should listen on in remote mode',
-    })
-    .option('base', {
-      type: 'string',
-      describe: 'base URL. Example: /demo/',
-      default: '/',
-    })
-    .strict()
-    .help(),
-  async ({ entry, theme, port: userPort, open, log, remote, tunnel, force, inspect, bind, base }) => {
+  (args) =>
+    commonOptions(args)
+      .option('port', {
+        alias: 'p',
+        type: 'number',
+        describe: 'port',
+      })
+      .option('open', {
+        alias: 'o',
+        default: false,
+        type: 'boolean',
+        describe: 'open in browser',
+      })
+      .option('remote', {
+        type: 'string',
+        describe: 'listen public host and enable remote control',
+      })
+      .option('tunnel', {
+        default: false,
+        type: 'boolean',
+        describe:
+          'open a Cloudflare Quick Tunnel to make Slidev available on the internet',
+      })
+      .option('log', {
+        default: 'warn',
+        type: 'string',
+        choices: ['error', 'warn', 'info', 'silent'],
+        describe: 'log level',
+      })
+      .option('inspect', {
+        default: false,
+        type: 'boolean',
+        describe: 'enable the inspect plugin for debugging',
+      })
+      .option('force', {
+        alias: 'f',
+        default: false,
+        type: 'boolean',
+        describe: 'force the optimizer to ignore the cache and re-bundle',
+      })
+      .option('bind', {
+        type: 'string',
+        default: '0.0.0.0',
+        describe:
+          'specify which IP addresses the server should listen on in remote mode',
+      })
+      .option('base', {
+        type: 'string',
+        describe: 'base URL. Example: /demo/',
+        default: '/',
+      })
+      .strict()
+      .help(),
+  async ({
+    entry,
+    theme,
+    port: userPort,
+    open,
+    log,
+    remote,
+    tunnel,
+    force,
+    inspect,
+    bind,
+    base,
+  }) => {
     let server: ViteDevServer | undefined
     let port = 3030
 
@@ -127,15 +162,20 @@ cli.command(
     }
 
     async function initServer() {
-      const options = await resolveOptions({ entry, remote, theme, inspect, base }, 'dev')
+      const options = await resolveOptions(
+        { entry, remote, theme, inspect, base },
+        'dev',
+      )
       const host = remote !== undefined ? bind : 'localhost'
-      port = userPort || await getPort({
-        port: 3030,
-        random: false,
-        portRange: [3030, 4000],
-        host,
-      })
-      server = (await createServer(
+      port =
+        userPort ||
+        (await getPort({
+          port: 3030,
+          random: false,
+          portRange: [3030, 4000],
+          host,
+        }))
+      server = await createServer(
         options,
         {
           server: {
@@ -156,29 +196,44 @@ cli.command(
         {
           async loadData(loadedSource) {
             const { data: oldData, entry } = options
-            const loaded = await parser.load(options.userRoot, entry, loadedSource, 'dev')
+            const loaded = await parser.load(
+              options.userRoot,
+              entry,
+              loadedSource,
+              'dev',
+            )
 
-            const themeRaw = theme || loaded.headmatter.theme as string || 'default'
+            const themeRaw =
+              theme || (loaded.headmatter.theme as string) || 'default'
             if (options.themeRaw !== themeRaw) {
               console.log(yellow('\n  restarting on theme change\n'))
               restartServer()
               return false
             }
             // Because themeRaw is not changed, we don't resolve it again
-            const themeMeta = options.themeRoots[0] ? await getThemeMeta(themeRaw, options.themeRoots[0]) : undefined
+            const themeMeta = options.themeRoots[0]
+              ? await getThemeMeta(themeRaw, options.themeRoots[0])
+              : undefined
             const newData: SlidevData = {
               ...loaded,
               themeMeta,
               config: parser.resolveConfig(loaded.headmatter, themeMeta, entry),
             }
 
-            if (CONFIG_RESTART_FIELDS.some(i => !equal(newData.config[i], oldData.config[i]))) {
+            if (
+              CONFIG_RESTART_FIELDS.some(
+                (i) => !equal(newData.config[i], oldData.config[i]),
+              )
+            ) {
               console.log(yellow('\n  restarting on config change\n'))
               restartServer()
               return false
             }
 
-            if ((newData.features.katex && !oldData.features.katex) || (newData.features.monaco && !oldData.features.monaco)) {
+            if (
+              (newData.features.katex && !oldData.features.katex) ||
+              (newData.features.monaco && !oldData.features.monaco)
+            ) {
               console.log(yellow('\n  restarting on feature change\n'))
               restartServer()
               return false
@@ -187,23 +242,33 @@ cli.command(
             return newData
           },
         },
-      ))
+      )
 
       await server.listen()
 
       let tunnelUrl = ''
       if (tunnel) {
-        if (remote != null)
-          tunnelUrl = await openTunnel(port)
+        if (remote != null) tunnelUrl = await openTunnel(port)
         else
-          console.log(yellow('\n  --remote is required for tunneling, Cloudflare Quick Tunnel is not enabled.\n'))
+          console.log(
+            yellow(
+              '\n  --remote is required for tunneling, Cloudflare Quick Tunnel is not enabled.\n',
+            ),
+          )
       }
 
       let publicIp: string | undefined
       if (remote)
-        publicIp = await import('public-ip').then(r => r.publicIpv4())
+        publicIp = await import('public-ip').then((r) => r.publicIpv4())
 
-      lastRemoteUrl = printInfo(options, port, base, remote, tunnelUrl, publicIp)
+      lastRemoteUrl = printInfo(
+        options,
+        port,
+        base,
+        remote,
+        tunnelUrl,
+        publicIp,
+      )
 
       return options
     }
@@ -214,7 +279,7 @@ cli.command(
         port,
         acceptCloudflareNotice: true,
       })
-      return await tunnel?.getURL() ?? ''
+      return (await tunnel?.getURL()) ?? ''
     }
 
     const SHORTCUTS = [
@@ -236,7 +301,9 @@ cli.command(
         name: 'e',
         fullname: 'edit',
         action() {
-          exec(`code "${entry}"`)
+          if (isRemote(entry))
+            console.log(yellow('\n  editing remote entry is not supported\n'))
+          else exec(`code "${entry}"`)
         },
       },
       {
@@ -245,8 +312,7 @@ cli.command(
         action() {
           try {
             server?.close()
-          }
-          finally {
+          } finally {
             process.exit()
           }
         },
@@ -255,17 +321,24 @@ cli.command(
         name: 'c',
         fullname: 'qrcode',
         async action() {
-          if (!lastRemoteUrl)
-            return
-          await import('uqr')
-            .then(async (r) => {
-              const code = r.renderUnicodeCompact(lastRemoteUrl!)
-              console.log(`\n${dim('  QR Code for remote control: ')}\n  ${blue(lastRemoteUrl!)}\n`)
-              console.log(code.split('\n').map(i => `  ${i}`).join('\n'))
-              const publicIp = await import('public-ip').then(r => r.publicIpv4())
-              if (publicIp)
-                console.log(`\n${dim(' Public IP: ')}  ${blue(publicIp)}\n`)
-            })
+          if (!lastRemoteUrl) return
+          await import('uqr').then(async (r) => {
+            const code = r.renderUnicodeCompact(lastRemoteUrl!)
+            console.log(
+              `\n${dim('  QR Code for remote control: ')}\n  ${blue(lastRemoteUrl!)}\n`,
+            )
+            console.log(
+              code
+                .split('\n')
+                .map((i) => `  ${i}`)
+                .join('\n'),
+            )
+            const publicIp = await import('public-ip').then((r) =>
+              r.publicIpv4(),
+            )
+            if (publicIp)
+              console.log(`\n${dim(' Public IP: ')}  ${blue(publicIp)}\n`)
+          })
         },
       },
     ]
@@ -274,20 +347,20 @@ cli.command(
       process.stdin.resume()
       process.stdin.setEncoding('utf8')
       readline.emitKeypressEvents(process.stdin)
-      if (process.stdin.isTTY)
-        process.stdin.setRawMode(true)
+      if (process.stdin.isTTY) process.stdin.setRawMode(true)
 
-      const onKeyPress = (str: string, key: { ctrl: boolean, name: string }) => {
+      const onKeyPress = (
+        str: string,
+        key: { ctrl: boolean; name: string },
+      ) => {
         if (key.ctrl && key.name === 'c') {
           process.exit()
-        }
-        else {
-          const [sh] = SHORTCUTS.filter(item => item.name === str)
+        } else {
+          const [sh] = SHORTCUTS.filter((item) => item.name === str)
           if (sh) {
             try {
               sh.action()
-            }
-            catch (err) {
+            } catch (err) {
               console.error(`Failed to execute shortcut ${sh.fullname}`, err)
             }
           }
@@ -306,8 +379,8 @@ cli.command(
     // Start watcher to restart server on file changes
     const { watch } = await import('chokidar')
     const watchGlobs = roots
-      .filter(i => !i.includes('node_modules'))
-      .flatMap(root => FILES_CHANGE_RESTART.map(i => path.join(root, i)))
+      .filter((i) => !i.includes('node_modules'))
+      .flatMap((root) => FILES_CHANGE_RESTART.map((i) => path.join(root, i)))
     const watcher = watch(watchGlobs, {
       ignored: ['node_modules', '.git'],
       ignoreInitial: true,
@@ -331,39 +404,51 @@ cli.command(
 cli.command(
   'build [entry..]',
   'Build hostable SPA',
-  args => exportOptions(commonOptions(args))
-    .option('out', {
-      alias: 'o',
-      type: 'string',
-      default: 'dist',
-      describe: 'output dir',
-    })
-    .option('base', {
-      type: 'string',
-      describe: 'output base. Example: /demo/',
-    })
-    .option('download', {
-      alias: 'd',
-      type: 'boolean',
-      describe: 'allow download as PDF',
-    })
-    .option('without-notes', {
-      type: 'boolean',
-      describe: 'exclude speaker notes from the built output',
-    })
-    .option('inspect', {
-      default: false,
-      type: 'boolean',
-      describe: 'enable the inspect plugin for debugging',
-    })
-    .strict()
-    .help(),
+  (args) =>
+    exportOptions(commonOptions(args))
+      .option('out', {
+        alias: 'o',
+        type: 'string',
+        default: 'dist',
+        describe: 'output dir',
+      })
+      .option('base', {
+        type: 'string',
+        describe: 'output base. Example: /demo/',
+      })
+      .option('download', {
+        alias: 'd',
+        type: 'boolean',
+        describe: 'allow download as PDF',
+      })
+      .option('without-notes', {
+        type: 'boolean',
+        describe: 'exclude speaker notes from the built output',
+      })
+      .option('inspect', {
+        default: false,
+        type: 'boolean',
+        describe: 'enable the inspect plugin for debugging',
+      })
+      .strict()
+      .help(),
   async (args) => {
-    const { entry, theme, base, download, out, inspect, 'without-notes': withoutNotes } = args
+    const {
+      entry,
+      theme,
+      base,
+      download,
+      out,
+      inspect,
+      'without-notes': withoutNotes,
+    } = args
     const { build } = await import('./commands/build')
 
     for (const entryFile of entry as unknown as string[]) {
-      const options = await resolveOptions({ entry: entryFile, theme, inspect, download, base, withoutNotes }, 'build')
+      const options = await resolveOptions(
+        { entry: entryFile, theme, inspect, download, base, withoutNotes },
+        'build',
+      )
 
       printInfo(options)
       await build(
@@ -371,7 +456,10 @@ cli.command(
         {
           base,
           build: {
-            outDir: entry.length === 1 ? out : path.join(out, path.basename(entryFile, '.md')),
+            outDir:
+              entry.length === 1
+                ? out
+                : path.join(out, path.basename(entryFile, '.md')),
           },
         },
         { ...args, entry: entryFile },
@@ -383,12 +471,10 @@ cli.command(
 cli.command(
   'format [entry..]',
   'Format the markdown file',
-  args => commonOptions(args)
-    .strict()
-    .help(),
+  (args) => commonOptions(args).strict().help(),
   async ({ entry }) => {
     for (const entryFile of entry as unknown as string[]) {
-      const md = await parser.parse(await fs.readFile(entryFile, 'utf-8'), entryFile)
+      const md = await parser.parse(await loadSource(entryFile), entryFile)
       parser.prettify(md)
       await parser.save(md)
     }
@@ -399,50 +485,52 @@ cli.command(
   'theme [subcommand]',
   'Theme related operations',
   (command) => {
-    return command
-      .command(
-        'eject',
-        'Eject current theme into local file system',
-        args => commonOptions(args)
-          .option('dir', {
-            type: 'string',
-            default: 'theme',
-          }),
-        async ({ entry: entryRaw, dir, theme: themeInput }) => {
-          const entry = await resolveEntry(entryRaw)
-          const roots = await getRoots(entry)
-          const data = await parser.load(roots.userRoot, entry)
-          let themeRaw = themeInput || data.headmatter.theme as string | null | undefined
-          themeRaw = themeRaw === null ? 'none' : (themeRaw || 'default')
-          if (themeRaw === 'none') {
-            console.error('Cannot eject theme "none"')
-            process.exit(1)
-          }
-          if ('/.'.includes(themeRaw[0]) || (themeRaw[0] !== '@' && themeRaw.includes('/'))) {
-            console.error('Theme is already ejected')
-            process.exit(1)
-          }
-          const [name, root] = (await resolveTheme(themeRaw, entry)) as [string, string]
+    return command.command(
+      'eject',
+      'Eject current theme into local file system',
+      (args) =>
+        commonOptions(args).option('dir', {
+          type: 'string',
+          default: 'theme',
+        }),
+      async ({ entry: entryRaw, dir, theme: themeInput }) => {
+        const entry = await resolveEntry(entryRaw)
+        const roots = await getRoots(entry)
+        const data = await parser.load(roots.userRoot, entry)
+        let themeRaw =
+          themeInput || (data.headmatter.theme as string | null | undefined)
+        themeRaw = themeRaw === null ? 'none' : themeRaw || 'default'
+        if (themeRaw === 'none') {
+          console.error('Cannot eject theme "none"')
+          process.exit(1)
+        }
+        if (
+          '/.'.includes(themeRaw[0]) ||
+          (themeRaw[0] !== '@' && themeRaw.includes('/'))
+        ) {
+          console.error('Theme is already ejected')
+          process.exit(1)
+        }
+        const [name, root] = (await resolveTheme(themeRaw, entry)) as [
+          string,
+          string,
+        ]
 
-          await fs.mkdir(path.resolve(dir), { recursive: true })
-          await fs.cp(
-            root,
-            path.resolve(dir),
-            {
-              recursive: true,
-              filter: i => !/node_modules|\.git/.test(path.relative(root, i)),
-            },
-          )
+        await fs.mkdir(path.resolve(dir), { recursive: true })
+        await fs.cp(root, path.resolve(dir), {
+          recursive: true,
+          filter: (i) => !/node_modules|\.git/.test(path.relative(root, i)),
+        })
 
-          const dirPath = `./${dir}`
-          const firstSlide = data.entry.slides[0]
-          updateFrontmatterPatch(firstSlide, { theme: dirPath })
-          parser.prettifySlide(firstSlide)
-          await parser.save(data.entry)
+        const dirPath = `./${dir}`
+        const firstSlide = data.entry.slides[0]
+        updateFrontmatterPatch(firstSlide, { theme: dirPath })
+        parser.prettifySlide(firstSlide)
+        await parser.save(data.entry)
 
-          console.log(`Theme "${name}" ejected successfully to "${dirPath}"`)
-        },
-      )
+        console.log(`Theme "${name}" ejected successfully to "${dirPath}"`)
+      },
+    )
   },
   () => {
     cli.showHelp()
@@ -453,9 +541,7 @@ cli.command(
 cli.command(
   'export [entry..]',
   'Export slides to PDF',
-  args => exportOptions(commonOptions(args))
-    .strict()
-    .help(),
+  (args) => exportOptions(commonOptions(args)).strict().help(),
   async (args) => {
     const { entry, theme } = args
     const { exportSlides, getExportOptions } = await import('./commands/export')
@@ -463,24 +549,26 @@ cli.command(
 
     let warned = false
     for (const entryFile of entry as unknown as string) {
-      const options = await resolveOptions({ entry: entryFile, theme }, 'export')
+      const options = await resolveOptions(
+        { entry: entryFile, theme },
+        'export',
+      )
 
       if (options.data.config.browserExporter !== false && !warned) {
         warned = true
         console.log(cyanBright('[Slidev] Try the new browser exporter!'))
         console.log(
-          cyanBright('You can use the browser exporter instead by starting the dev server as normal and visit'),
+          cyanBright(
+            'You can use the browser exporter instead by starting the dev server as normal and visit',
+          ),
           `${blue('localhost:')}${dim('<port>')}${blue('/export')}\n`,
         )
       }
 
-      const server = await createServer(
-        options,
-        {
-          server: { port },
-          clearScreen: false,
-        },
-      )
+      const server = await createServer(options, {
+        server: { port },
+        clearScreen: false,
+      })
       await server.listen(port)
       printInfo(options)
       const result = await exportSlides({
@@ -498,53 +586,50 @@ cli.command(
 cli.command(
   'export-notes [entry..]',
   'Export slide notes to PDF',
-  args => args
-    .positional('entry', {
-      default: 'slides.md',
-      type: 'string',
-      describe: 'path to the slides markdown entry',
-    })
-    .option('output', {
-      type: 'string',
-      describe: 'path to the output',
-    })
-    .option('timeout', {
-      default: 30000,
-      type: 'number',
-      describe: 'timeout for rendering the print page',
-    })
-    .option('wait', {
-      default: 0,
-      type: 'number',
-      describe: 'wait for the specified ms before exporting',
-    })
-    .strict()
-    .help(),
-  async ({
-    entry,
-    output,
-    timeout,
-    wait,
-  }) => {
+  (args) =>
+    args
+      .positional('entry', {
+        default: 'slides.md',
+        type: 'string',
+        describe: 'path to the slides markdown entry',
+      })
+      .option('output', {
+        type: 'string',
+        describe: 'path to the output',
+      })
+      .option('timeout', {
+        default: 30000,
+        type: 'number',
+        describe: 'timeout for rendering the print page',
+      })
+      .option('wait', {
+        default: 0,
+        type: 'number',
+        describe: 'wait for the specified ms before exporting',
+      })
+      .strict()
+      .help(),
+  async ({ entry, output, timeout, wait }) => {
     const { exportNotes } = await import('./commands/export')
     const port = await getPort(12445)
 
     for (const entryFile of entry as unknown as string[]) {
       const options = await resolveOptions({ entry: entryFile }, 'export')
-      const server = await createServer(
-        options,
-        {
-          server: { port },
-          clearScreen: false,
-        },
-      )
+      const server = await createServer(options, {
+        server: { port },
+        clearScreen: false,
+      })
       await server.listen(port)
 
       printInfo(options)
 
       const result = await exportNotes({
         port,
-        output: output || (options.data.config.exportFilename ? `${options.data.config.exportFilename}-notes` : `${path.basename(entryFile, '.md')}-export-notes`),
+        output:
+          output ||
+          (options.data.config.exportFilename
+            ? `${options.data.config.exportFilename}-notes`
+            : `${path.basename(entryFile, '.md')}-export-notes`),
         timeout,
         wait,
       })
@@ -557,9 +642,7 @@ cli.command(
   },
 )
 
-cli
-  .help()
-  .parse()
+cli.help().parse()
 
 function commonOptions(args: Argv<object>) {
   return args
@@ -622,7 +705,8 @@ function exportOptions<T>(args: Argv<T>) {
     })
     .option('per-slide', {
       type: 'boolean',
-      describe: 'slide slides slide by slide. Works better with global components, but will break cross slide links and TOC in PDF',
+      describe:
+        'slide slides slide by slide. Works better with global components, but will break cross slide links and TOC in PDF',
     })
     .option('scale', {
       type: 'number',
@@ -650,14 +734,27 @@ function printInfo(
   console.log()
   console.log()
   console.log(`  ${cyan('●') + blue('■') + yellow('▲')}`)
-  console.log(`${bold('  Slidev')}  ${blue(`v${version}`)} ${isInstalledGlobally.value ? yellow('(global)') : ''}`)
+  console.log(
+    `${bold('  Slidev')}  ${blue(`v${version}`)} ${isInstalledGlobally.value ? yellow('(global)') : ''}`,
+  )
   console.log()
 
-  verifyConfig(options.data.config, options.data.themeMeta, v => console.warn(yellow(`  ! ${v}`)))
+  verifyConfig(options.data.config, options.data.themeMeta, (v) =>
+    console.warn(yellow(`  ! ${v}`)),
+  )
 
-  console.log(dim('  theme       ') + (options.theme ? green(options.theme) : gray('none')))
+  console.log(
+    dim('  theme       ') +
+      (options.theme ? green(options.theme) : gray('none')),
+  )
   console.log(dim('  css engine  ') + blue('unocss'))
-  console.log(dim('  entry       ') + dim(path.normalize(path.dirname(options.entry)) + path.sep) + path.basename(options.entry))
+  console.log(
+    dim('  entry       ') +
+      (isRemote(options.entry)
+        ? dim(options.entry)
+        : dim(path.normalize(path.dirname(options.entry)) + path.sep) +
+          path.basename(options.entry)),
+  )
 
   if (port) {
     const baseText = base?.slice(0, -1) || ''
@@ -670,25 +767,42 @@ function printInfo(
     console.log()
     console.log(`${dim('  public slide show ')}  > ${cyan(`${baseUrl}/`)}`)
     if (query)
-      console.log(`${dim('  private slide show ')} > ${cyan(`${baseUrl}/${query}`)}`)
+      console.log(
+        `${dim('  private slide show ')} > ${cyan(`${baseUrl}/${query}`)}`,
+      )
     if (options.utils.define.__SLIDEV_FEATURE_PRESENTER__)
-      console.log(`${dim('  presenter mode ')}     > ${blue(`${baseUrl}${presenterPath}`)}`)
-    console.log(`${dim('  slides overview ')}    > ${blue(`${baseUrl}${overviewPath}`)}`)
+      console.log(
+        `${dim('  presenter mode ')}     > ${blue(`${baseUrl}${presenterPath}`)}`,
+      )
+    console.log(
+      `${dim('  slides overview ')}    > ${blue(`${baseUrl}${overviewPath}`)}`,
+    )
     if (options.utils.define.__SLIDEV_FEATURE_BROWSER_EXPORTER__)
-      console.log(`${dim('  export slides')}       > ${blue(`${baseUrl}/export/`)}`)
+      console.log(
+        `${dim('  export slides')}       > ${blue(`${baseUrl}/export/`)}`,
+      )
     if (options.inspect)
-      console.log(`${dim('  vite inspector')}      > ${yellow(`${baseUrl}/__inspect/`)}`)
+      console.log(
+        `${dim('  vite inspector')}      > ${yellow(`${baseUrl}/__inspect/`)}`,
+      )
 
     let lastRemoteUrl = ''
 
     if (remote !== undefined) {
-      Object.values(os.networkInterfaces())
-        .forEach(v => (v || [])
-          .filter(details => String(details.family).slice(-1) === '4' && !details.address.includes('127.0.0.1'))
+      Object.values(os.networkInterfaces()).forEach((v) => {
+        ;(v || [])
+          .filter(
+            (details) =>
+              String(details.family).slice(-1) === '4' &&
+              !details.address.includes('127.0.0.1'),
+          )
           .forEach(({ address }) => {
             lastRemoteUrl = `http://${address}:${portAndBase}${entryPath}`
-            console.log(`${dim('  remote control ')}     > ${blue(lastRemoteUrl)}`)
-          }))
+            console.log(
+              `${dim('  remote control ')}     > ${blue(lastRemoteUrl)}`,
+            )
+          })
+      })
 
       if (publicIp) {
         lastRemoteUrl = `http://${publicIp}:${portAndBase}${entryPath}`
@@ -697,15 +811,20 @@ function printInfo(
 
       if (tunnelUrl) {
         lastRemoteUrl = `${tunnelUrl}${baseText}${entryPath}`
-        console.log(`${dim('  remote via tunnel')}   > ${yellow(lastRemoteUrl)}`)
+        console.log(
+          `${dim('  remote via tunnel')}   > ${yellow(lastRemoteUrl)}`,
+        )
       }
-    }
-    else {
-      console.log(`${dim('  remote control ')}     > ${dim('pass --remote to enable')}`)
+    } else {
+      console.log(
+        `${dim('  remote control ')}     > ${dim('pass --remote to enable')}`,
+      )
     }
 
     console.log()
-    console.log(`${dim('  shortcuts ')}          > ${underline('r')}${dim('estart | ')}${underline('o')}${dim('pen | ')}${underline('e')}${dim('dit | ')}${underline('q')}${dim('uit')}${lastRemoteUrl ? ` | ${dim('qr')}${underline('c')}${dim('ode')}` : ''}`)
+    console.log(
+      `${dim('  shortcuts ')}          > ${underline('r')}${dim('estart | ')}${underline('o')}${dim('pen | ')}${underline('e')}${dim('dit | ')}${underline('q')}${dim('uit')}${lastRemoteUrl ? ` | ${dim('qr')}${underline('c')}${dim('ode')}` : ''}`,
+    )
 
     return lastRemoteUrl
   }

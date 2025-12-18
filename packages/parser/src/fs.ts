@@ -1,8 +1,15 @@
-import type { PreparserExtensionLoader, SlideInfo, SlidevData, SlidevMarkdown, SlidevPreparserExtension, SourceSlideInfo } from '@slidev/types'
 import { existsSync } from 'node:fs'
 import { readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { slash } from '@antfu/utils'
+import type {
+  PreparserExtensionLoader,
+  SlideInfo,
+  SlidevData,
+  SlidevMarkdown,
+  SlidevPreparserExtension,
+  SourceSlideInfo,
+} from '@slidev/types'
 import YAML from 'yaml'
 import { detectFeatures, parse, parseRangeString, stringify } from './core'
 
@@ -26,7 +33,17 @@ export async function load(
   sources: Record<string, string> | ((path: string) => Promise<string>) = {},
   mode?: string,
 ): Promise<LoadedSlidevData> {
-  const loadSource = typeof sources === 'function' ? sources : async (path: string) => sources[path] ?? readFile(path, 'utf-8')
+  const loadSource =
+    typeof sources === 'function'
+      ? sources
+      : async (path: string) => {
+          if (sources[path]) return sources[path]
+          if (/^https?:\/\//.test(path)) {
+            const { ofetch } = await import('ofetch')
+            return await ofetch(path, { responseType: 'text' })
+          }
+          return readFile(path, 'utf-8')
+        }
 
   const markdown = await loadSource(filepath)
 
@@ -43,7 +60,7 @@ export async function load(
         hEnd++
       hm = lines.slice(1, hEnd).join('\n')
     }
-    const o = YAML.parse(hm) as Record<string, unknown> ?? {}
+    const o = (YAML.parse(hm) as Record<string, unknown>) ?? {}
     extensions = await preparserExtensionLoader(o, filepath, mode)
   }
 
@@ -51,7 +68,12 @@ export async function load(
   const watchFiles: Record<string, Set<number>> = {}
   const slides: SlideInfo[] = []
 
-  async function loadMarkdown(path: string, range?: string, frontmatterOverride?: Record<string, unknown>, importers?: SourceSlideInfo[]) {
+  async function loadMarkdown(
+    path: string,
+    range?: string,
+    frontmatterOverride?: Record<string, unknown>,
+    importers?: SourceSlideInfo[],
+  ) {
     let md = markdownFiles[path]
     if (!md) {
       const raw = await loadSource(path)
@@ -65,8 +87,7 @@ export async function load(
       const subSlide = md.slides[index - 1]
       try {
         await loadSlide(md, subSlide, frontmatterOverride, importers)
-      }
-      catch (e) {
+      } catch (e) {
         md.errors ??= []
         md.errors.push({
           row: subSlide.start,
@@ -74,42 +95,56 @@ export async function load(
         })
         continue
       }
-      if (directImporter)
-        (directImporter.imports ??= []).push(subSlide)
+      if (directImporter) {
+        directImporter.imports ??= []
+        directImporter.imports.push(subSlide)
+      }
     }
 
     return md
   }
 
-  async function loadSlide(md: SlidevMarkdown, slide: SourceSlideInfo, frontmatterOverride?: Record<string, unknown>, importChain?: SourceSlideInfo[]) {
-    if (slide.frontmatter.disabled || slide.frontmatter.hide)
-      return
+  async function loadSlide(
+    md: SlidevMarkdown,
+    slide: SourceSlideInfo,
+    frontmatterOverride?: Record<string, unknown>,
+    importChain?: SourceSlideInfo[],
+  ) {
+    if (slide.frontmatter.disabled || slide.frontmatter.hide) return
     if (slide.frontmatter.src) {
       const [rawPath, rangeRaw] = slide.frontmatter.src.split('#')
-      const path = slash(
-        rawPath.startsWith('/')
-          ? resolve(userRoot, rawPath.substring(1))
-          : resolve(dirname(slide.filepath), rawPath),
-      )
+      let path: string
+      if (/^https?:\/\//.test(rawPath)) {
+        path = rawPath
+      } else {
+        path = slash(
+          rawPath.startsWith('/')
+            ? resolve(userRoot, rawPath.substring(1))
+            : resolve(dirname(slide.filepath), rawPath),
+        )
+      }
 
-      frontmatterOverride = {
+      const mergedFrontmatter = {
         ...slide.frontmatter,
         ...frontmatterOverride,
       }
-      delete frontmatterOverride.src
+      delete mergedFrontmatter.src
 
-      if (!existsSync(path)) {
+      if (!/^https?:\/\//.test(path) && !existsSync(path)) {
         md.errors ??= []
         md.errors.push({
           row: slide.start,
           message: `Imported markdown file not found: ${path}`,
         })
+      } else {
+        await loadMarkdown(
+          path,
+          rangeRaw,
+          mergedFrontmatter,
+          importChain ? [...importChain, slide] : [slide],
+        )
       }
-      else {
-        await loadMarkdown(path, rangeRaw, frontmatterOverride, importChain ? [...importChain, slide] : [slide])
-      }
-    }
-    else {
+    } else {
       slides.push({
         frontmatter: { ...slide.frontmatter, ...frontmatterOverride },
         content: slide.content,
@@ -128,20 +163,22 @@ export async function load(
   const entry = await loadMarkdown(slash(filepath))
 
   const headmatter = { ...entry.slides[0]?.frontmatter }
-  if (slides[0]?.title)
+  if (slides[0]?.title) {
     headmatter.title ??= slides[0].title
+  }
 
   return {
     slides,
     entry,
     headmatter,
-    features: detectFeatures(slides.map(s => s.source.raw).join('')),
+    features: detectFeatures(slides.map((s) => s.source.raw).join('')),
     markdownFiles,
     watchFiles,
   }
 }
 
 export async function save(markdown: SlidevMarkdown) {
+  if (/^https?:\/\//.test(markdown.filepath)) return stringify(markdown)
   const fileContent = stringify(markdown)
   await writeFile(markdown.filepath, fileContent, 'utf-8')
   return fileContent

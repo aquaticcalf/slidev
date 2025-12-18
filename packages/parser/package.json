@@ -36,6 +36,7 @@
   "dependencies": {
     "@antfu/utils": "^9.3.0",
     "@slidev/types": "workspace:*",
+    "ofetch": "^1.5.1",
     "yaml": "^2.8.2"
   }
 }

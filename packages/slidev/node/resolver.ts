@@ -1,4 +1,3 @@
-import type { RootsInfo } from '@slidev/types'
 import { existsSync } from 'node:fs'
 import { copyFile, readFile } from 'node:fs/promises'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -6,9 +5,11 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { parseNi, run } from '@antfu/ni'
 import { ensurePrefix, slash } from '@antfu/utils'
+import type { RootsInfo } from '@slidev/types'
 import { underline, yellow } from 'ansis'
 import globalDirs from 'global-directory'
 import { resolvePath } from 'mlly'
+import { ofetch } from 'ofetch'
 import prompts from 'prompts'
 import { resolveGlobal } from 'resolve-global'
 import { findClosestPkgJsonPath, findDepPkgJsonPath } from 'vitefu'
@@ -16,6 +17,15 @@ import { findClosestPkgJsonPath, findDepPkgJsonPath } from 'vitefu'
 const cliRoot = fileURLToPath(new URL('..', import.meta.url))
 
 export const isInstalledGlobally: { value?: boolean } = {}
+
+export function isRemote(url: string) {
+  return /^https?:\/\//.test(url)
+}
+
+export async function loadSource(path: string) {
+  if (isRemote(path)) return await ofetch(path, { responseType: 'text' })
+  return await readFile(path, 'utf-8')
+}
 
 /**
  * Resolve path for import url on Vite client side
@@ -31,64 +41,87 @@ export function toAtFS(path: string) {
 /**
  * Find the actual path of the import. If Slidev is installed globally, it will also search globally.
  */
-export async function resolveImportPath(importName: string, ensure: true): Promise<string>
-export async function resolveImportPath(importName: string, ensure?: boolean): Promise<string | undefined>
+export async function resolveImportPath(
+  importName: string,
+  ensure: true,
+): Promise<string>
+export async function resolveImportPath(
+  importName: string,
+  ensure?: boolean,
+): Promise<string | undefined>
 export async function resolveImportPath(importName: string, ensure = false) {
   try {
     return await resolvePath(importName, {
       url: import.meta.url,
     })
-  }
-  catch { }
+  } catch {}
 
   if (isInstalledGlobally.value) {
     try {
       return resolveGlobal(importName)
-    }
-    catch { }
+    } catch {}
   }
 
-  if (ensure)
-    throw new Error(`Failed to resolve package "${importName}"`)
+  if (ensure) throw new Error(`Failed to resolve package "${importName}"`)
 }
 
 /**
  * Find the root of the package. If Slidev is installed globally, it will also search globally.
  */
-export async function findPkgRoot(dep: string, parent: string, ensure: true): Promise<string>
-export async function findPkgRoot(dep: string, parent: string, ensure?: boolean): Promise<string | undefined>
+export async function findPkgRoot(
+  dep: string,
+  parent: string,
+  ensure: true,
+): Promise<string>
+export async function findPkgRoot(
+  dep: string,
+  parent: string,
+  ensure?: boolean,
+): Promise<string | undefined>
 export async function findPkgRoot(dep: string, parent: string, ensure = false) {
   const pkgJsonPath = await findDepPkgJsonPath(dep, parent)
-  const path = pkgJsonPath ? dirname(pkgJsonPath) : isInstalledGlobally.value ? await findGlobalPkgRoot(dep, false) : undefined
-  if (ensure && !path)
-    throw new Error(`Failed to resolve package "${dep}"`)
+  const path = pkgJsonPath
+    ? dirname(pkgJsonPath)
+    : isInstalledGlobally.value
+      ? await findGlobalPkgRoot(dep, false)
+      : undefined
+  if (ensure && !path) throw new Error(`Failed to resolve package "${dep}"`)
   return path
 }
 
-export async function findGlobalPkgRoot(name: string, ensure: true): Promise<string>
-export async function findGlobalPkgRoot(name: string, ensure?: boolean): Promise<string | undefined>
+export async function findGlobalPkgRoot(
+  name: string,
+  ensure: true,
+): Promise<string>
+export async function findGlobalPkgRoot(
+  name: string,
+  ensure?: boolean,
+): Promise<string | undefined>
 export async function findGlobalPkgRoot(name: string, ensure = false) {
   const localPath = await findDepPkgJsonPath(name, cliRoot)
-  if (localPath)
-    return dirname(localPath)
+  if (localPath) return dirname(localPath)
   const yarnPath = join(globalDirs.yarn.packages, name)
-  if (existsSync(`${yarnPath}/package.json`))
-    return yarnPath
+  if (existsSync(`${yarnPath}/package.json`)) return yarnPath
   const npmPath = join(globalDirs.npm.packages, name)
-  if (existsSync(`${npmPath}/package.json`))
-    return npmPath
-  if (ensure)
-    throw new Error(`Failed to resolve global package "${name}"`)
+  if (existsSync(`${npmPath}/package.json`)) return npmPath
+  if (ensure) throw new Error(`Failed to resolve global package "${name}"`)
 }
 
 export async function resolveEntry(entryRaw: string) {
-  if (!existsSync(entryRaw) && !entryRaw.endsWith('.md') && !/[/\\]/.test(entryRaw))
+  if (isRemote(entryRaw)) return entryRaw
+  if (
+    !existsSync(entryRaw) &&
+    !entryRaw.endsWith('.md') &&
+    !/[/\\]/.test(entryRaw)
+  )
     entryRaw += '.md'
   const entry = resolve(entryRaw)
   if (!existsSync(entry)) {
     // Check if stdin is available for prompts (i.e., is a TTY)
     if (!process.stdin.isTTY) {
-      console.error(`Entry file "${entry}" does not exist and cannot prompt for confirmation`)
+      console.error(
+        `Entry file "${entry}" does not exist and cannot prompt for confirmation`,
+      )
       process.exit(1)
     }
     const { create } = await prompts({
@@ -97,10 +130,8 @@ export async function resolveEntry(entryRaw: string) {
       initial: 'Y',
       message: `Entry file ${yellow(`"${entry}"`)} does not exist, do you want to create it?`,
     })
-    if (create)
-      await copyFile(resolve(cliRoot, 'template.md'), entry)
-    else
-      process.exit(0)
+    if (create) await copyFile(resolve(cliRoot, 'template.md'), entry)
+    else process.exit(0)
   }
   return slash(entry)
 }
@@ -108,11 +139,16 @@ export async function resolveEntry(entryRaw: string) {
 /**
  * Create a resolver for theme or addon
  */
-export function createResolver(type: 'theme' | 'addon', officials: Record<string, string>) {
+export function createResolver(
+  type: 'theme' | 'addon',
+  officials: Record<string, string>,
+) {
   async function promptForInstallation(pkgName: string) {
     // Check if stdin is available for prompts (i.e., is a TTY)
     if (!process.stdin.isTTY) {
-      console.error(`The ${type} "${pkgName}" was not found and cannot prompt for installation`)
+      console.error(
+        `The ${type} "${pkgName}" was not found and cannot prompt for installation`,
+      )
       process.exit(1)
     }
 
@@ -123,26 +159,23 @@ export function createResolver(type: 'theme' | 'addon', officials: Record<string
       message: `The ${type} "${pkgName}" was not found ${underline(isInstalledGlobally.value ? 'globally' : 'in your project')}, do you want to install it now?`,
     })
 
-    if (!confirm)
-      process.exit(1)
+    if (!confirm) process.exit(1)
 
-    if (isInstalledGlobally.value)
-      await run(parseNi, ['-g', pkgName])
-    else
-      await run(parseNi, [pkgName])
+    if (isInstalledGlobally.value) await run(parseNi, ['-g', pkgName])
+    else await run(parseNi, [pkgName])
   }
 
-  return async function (name: string, importer: string): Promise<[name: string, root: string | null]> {
+  return async (
+    name: string,
+    importer: string,
+  ): Promise<[name: string, root: string | null]> => {
     const { userRoot } = await getRoots()
 
-    if (name === 'none')
-      return ['', null]
+    if (name === 'none') return ['', null]
 
     // local path
-    if (name[0] === '/')
-      return [name, name]
-    if (name.startsWith('@/'))
-      return [name, resolve(userRoot, name.slice(2))]
+    if (name[0] === '/') return [name, name]
+    if (name.startsWith('@/')) return [name, resolve(userRoot, name.slice(2))]
     if (name[0] === '.' || (name[0] !== '@' && name.includes('/')))
       return [name, resolve(dirname(importer), name)]
 
@@ -159,13 +192,13 @@ export function createResolver(type: 'theme' | 'addon', officials: Record<string
 
       for (const pkgName of possiblePkgNames) {
         const pkgRoot = await findPkgRoot(pkgName, importer)
-        if (pkgRoot)
-          return [pkgName, pkgRoot]
+        if (pkgRoot) return [pkgName, pkgRoot]
       }
     }
 
     // fallback to prompt install
-    const pkgName = officials[name] ?? (name[0] === '@' ? name : `slidev-${type}-${name}`)
+    const pkgName =
+      officials[name] ?? (name[0] === '@' ? name : `slidev-${type}-${name}`)
     await promptForInstallation(pkgName)
     return [pkgName, await findPkgRoot(pkgName, importer, true)]
   }
@@ -182,8 +215,7 @@ async function getUserPkgJson(userRoot: string) {
 // yarn: https://classic.yarnpkg.com/en/docs/workspaces/#toc-how-to-use-it
 async function hasWorkspacePackageJSON(root: string): Promise<boolean> {
   const path = join(root, 'package.json')
-  if (!existsSync(path))
-    return false
+  if (!existsSync(path)) return false
   const content = JSON.parse(await readFile(path, 'utf-8')) || {}
   return !!content.workspaces
 }
@@ -204,7 +236,7 @@ function hasRootFile(root: string): boolean {
     // 'nx.json'
   ]
 
-  return ROOT_FILES.some(file => existsSync(join(root, file)))
+  return ROOT_FILES.some((file) => existsSync(join(root, file)))
 }
 
 /**
@@ -214,15 +246,12 @@ async function searchForWorkspaceRoot(
   current: string,
   root = current,
 ): Promise<string> {
-  if (hasRootFile(current))
-    return current
-  if (await hasWorkspacePackageJSON(current))
-    return current
+  if (hasRootFile(current)) return current
+  if (await hasWorkspacePackageJSON(current)) return current
 
   const dir = dirname(current)
   // reach the fs root
-  if (!dir || dir === current)
-    return root
+  if (!dir || dir === current) return root
 
   return searchForWorkspaceRoot(dir, root)
 }
@@ -230,16 +259,16 @@ async function searchForWorkspaceRoot(
 let rootsInfo: RootsInfo | null = null
 
 export async function getRoots(entry?: string): Promise<RootsInfo> {
-  if (rootsInfo)
-    return rootsInfo
-  if (!entry)
-    throw new Error('[slidev] Cannot find roots without entry')
-  const userRoot = dirname(entry)
-  isInstalledGlobally.value
-    = slash(relative(userRoot, process.argv[1])).includes('/.pnpm/')
-      || (await import('is-installed-globally')).default
+  if (rootsInfo) return rootsInfo
+  if (!entry) throw new Error('[slidev] Cannot find roots without entry')
+  const userRoot = isRemote(entry) ? process.cwd() : dirname(entry)
+  isInstalledGlobally.value =
+    slash(relative(userRoot, process.argv[1])).includes('/.pnpm/') ||
+    (await import('is-installed-globally')).default
   const clientRoot = await findPkgRoot('@slidev/client', cliRoot, true)
-  const closestPkgRoot = dirname(await findClosestPkgJsonPath(userRoot) || userRoot)
+  const closestPkgRoot = dirname(
+    (await findClosestPkgJsonPath(userRoot)) || userRoot,
+  )
   const userPkgJson = await getUserPkgJson(closestPkgRoot)
   const userWorkspaceRoot = await searchForWorkspaceRoot(closestPkgRoot)
   rootsInfo = {
