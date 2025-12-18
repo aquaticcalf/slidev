@@ -2,33 +2,28 @@
   "type": "module",
   "version": "52.11.0",
   "private": true,
-  "packageManager": "pnpm@10.25.0",
+  "packageManager": "bun@1.2.4",
   "engines": {
     "node": ">=18.0.0"
   },
   "workspaces": [
     "packages/*",
     "demo/*",
-    "cypress/fixtures/*",
-    "docs"
+    "cypress/fixtures/*"
   ],
   "scripts": {
-    "build": "pnpm -r --filter=\"./packages/**\" --parallel run build",
-    "ci:publish": "exit 0",
+    "build": "bun run --filter=\"./packages/**\" build",
     "cy": "cypress open",
-    "cy:fixture": "pnpm -C cypress/fixtures/basic run dev",
-    "demo:build": "exit 0",
-    "demo:composable-vue": "pnpm -C demo/composable-vue run dev",
-    "demo:vue-runner": "pnpm -C demo/vue-runner run dev",
-    "demo:dev": "pnpm -C demo/starter run dev",
-    "vscode:dev": "pnpm -C packages/vscode run dev",
-    "play": "pnpm demo:dev",
-    "dev": "pnpm -r --filter=\"./packages/**\" --parallel run dev",
+    "cy:fixture": "bun --cwd cypress/fixtures/basic dev",
+    "demo:composable-vue": "bun --cwd demo/composable-vue dev",
+    "demo:vue-runner": "bun --cwd demo/vue-runner dev",
+    "demo:dev": "bun --cwd demo/starter dev",
+    "vscode:dev": "bun --cwd packages/vscode dev",
+    "play": "bun demo:dev",
+    "dev": "bun run --filter=\"./packages/**\" dev",
     "lint": "biome check",
     "lint:fix": "biome check --write",
     "typecheck": "vue-tsc --noEmit",
-    "docs": "exit 0",
-    "docs:build": "exit 0",
     "release": "bumpp package.json packages/*/package.json --all",
     "test": "vitest test",
     "prepare": "simple-git-hooks"
