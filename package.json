@@ -2,6 +2,9 @@
   "type": "module",
   "version": "52.11.0",
   "private": true,
+  "bin": {
+    "slidev": "./packages/slidev/bin/slidev.mjs"
+  },
   "packageManager": "bun@1.2.4",
   "engines": {
     "node": ">=18.0.0"
