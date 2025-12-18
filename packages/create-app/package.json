@@ -28,9 +28,9 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "ansis": "catalog:prod",
-    "minimist": "catalog:prod",
-    "prompts": "catalog:prod",
-    "tinyexec": "catalog:prod"
+    "ansis": "^4.2.0",
+    "minimist": "^1.2.8",
+    "prompts": "^2.4.2",
+    "tinyexec": "^1.0.2"
   }
 }

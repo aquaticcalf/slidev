@@ -1,4 +1,5 @@
 {
+  "name": "demo-composable-vue",
   "private": true,
   "scripts": {
     "dev": "nodemon -w '../../packages/slidev/dist/*.mjs' --exec 'slidev --log=info'",
@@ -7,12 +8,12 @@
     "export:clicks": "slidev export --with-clicks"
   },
   "devDependencies": {
-    "@iconify-json/mdi": "catalog:icons",
-    "@iconify-json/ri": "catalog:icons",
+    "@iconify-json/mdi": "^1.2.3",
+    "@iconify-json/ri": "^1.2.6",
     "@slidev/cli": "workspace:*",
-    "@slidev/theme-default": "catalog:themes",
-    "@slidev/theme-seriph": "catalog:themes",
+    "@slidev/theme-default": "^0.25.0",
+    "@slidev/theme-seriph": "^0.25.0",
     "@slidev/types": "workspace:*",
-    "nodemon": "catalog:dev"
+    "nodemon": "^3.1.11"
   }
 }

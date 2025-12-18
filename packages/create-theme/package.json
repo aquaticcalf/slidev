@@ -20,8 +20,8 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
-    "ansis": "catalog:prod",
-    "minimist": "catalog:prod",
-    "prompts": "catalog:prod"
+    "ansis": "^4.2.0",
+    "minimist": "^1.2.8",
+    "prompts": "^2.4.2"
   }
 }

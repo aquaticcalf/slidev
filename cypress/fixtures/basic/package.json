@@ -1,4 +1,5 @@
 {
+  "name": "cypress-fixture-basic",
   "private": true,
   "scripts": {
     "dev": "nodemon -w '../../../packages/slidev/dist/*.js' --exec 'slidev --log=info --port=3041'",
@@ -7,9 +8,9 @@
   },
   "devDependencies": {
     "@slidev/cli": "workspace:*",
-    "@slidev/theme-default": "catalog:themes",
-    "@slidev/theme-seriph": "catalog:themes",
+    "@slidev/theme-default": "^0.25.0",
+    "@slidev/theme-seriph": "^0.25.0",
     "@slidev/types": "workspace:*",
-    "nodemon": "catalog:dev"
+    "nodemon": "^3.1.11"
   }
 }

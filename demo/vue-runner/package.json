@@ -1,4 +1,5 @@
 {
+  "name": "demo-vue-runner",
   "private": true,
   "scripts": {
     "build": "slidev build",
@@ -8,10 +9,10 @@
   },
   "devDependencies": {
     "@slidev/cli": "workspace:*",
-    "@slidev/theme-default": "catalog:themes",
-    "@slidev/theme-seriph": "catalog:themes",
-    "@vue/compiler-sfc": "catalog:demo",
-    "nodemon": "catalog:dev",
-    "vue": "catalog:frontend"
+    "@slidev/theme-default": "^0.25.0",
+    "@slidev/theme-seriph": "^0.25.0",
+    "@vue/compiler-sfc": "^3.5.25",
+    "nodemon": "^3.1.11",
+    "vue": "^3.5.25"
   }
 }
