@@ -2,7 +2,9 @@
   "name": "slidev",
   "type": "module",
   "version": "52.11.0",
-  "bin": "packages/slidev/bin/slidev.mjs",
+  "bin": {
+    "slidev": "packages/slidev/bin/slidev.mjs"
+  },
   "dependencies": {
     "@antfu/ni": "^28.0.0",
     "@antfu/utils": "^9.3.0",
